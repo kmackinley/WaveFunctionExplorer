@@ -118,6 +118,7 @@
             <option value="doppler">Doppler Effect</option>
             <option value="beats">Superposition / Beats</option>
             <option value="tunneling">Quantum Tunneling</option>
+            <option value="qho">Quantum Harmonic Oscillator</option>
             <option value="soliton">Soliton (KdV)</option>
             <option value="chladni">Chladni Plate</option>
             <option value="harmonics">Spherical Harmonics</option>
@@ -315,6 +316,26 @@ function colorMap(val, maxAbs) {
         r = 1 - s * 0.9; g = 1 - s * 0.6; b = 1;
     }
     return [r, g, b];
+}
+
+// ================================================================
+//  HERMITE POLYNOMIALS (for QHO)
+// ================================================================
+function hermite(n, x) {
+    if (n === 0) return 1;
+    if (n === 1) return 2 * x;
+    let h0 = 1, h1 = 2 * x;
+    for (let i = 2; i <= n; i++) {
+        const h = 2 * x * h1 - 2 * (i - 1) * h0;
+        h0 = h1; h1 = h;
+    }
+    return h1;
+}
+function hermiteNorm(n) {
+    // Returns sqrt(2^n * n!)
+    let val = 1;
+    for (let i = 1; i <= n; i++) val *= 2 * i;
+    return Math.sqrt(val);
 }
 
 // ================================================================
@@ -570,6 +591,46 @@ const waveDefs = {
             const barrier = inBarrier ? p.bh * 0.3 : 0;
 
             return ((incoming + reflected + transmitted) * zEnv) + barrier;
+        },
+        mode: 'surface',
+    },
+
+    qho: {
+        label: 'Quantum Harmonic Oscillator',
+        equation: '\\psi_n(x) = \\frac{1}{\\sqrt{2^n n!}}\\left(\\frac{m\\omega}{\\pi\\hbar}\\right)^{\\!1/4} H_n(\\xi)\\,e^{-\\xi^2/2}',
+        desc: 'The <b>quantum harmonic oscillator</b> &mdash; a particle in a parabolic potential V(x)&nbsp;=&nbsp;&frac12;m&omega;&sup2;x&sup2;. Energy eigenstates &psi;<sub>n</sub> are built from <b>Hermite polynomials</b> H<sub>n</sub>. Set <b>coherent amplitude&nbsp;&gt;&nbsp;0</b> to see a <b>coherent state</b>: a Gaussian that sloshes back and forth like a classical particle. This system is the foundation of phonons, photons, and all of quantum field theory.',
+        params: [
+            { id: 'n',     label: 'Eigenstate (n)',         min: 0,   max: 8, step: 1,    val: 0 },
+            { id: 'x0',    label: 'Coherent amplitude',     min: 0,   max: 3, step: 0.1,  val: 2.0 },
+            { id: 'omega', label: 'Frequency (\u03C9)',     min: 0.5, max: 4, step: 0.25, val: 1.5 },
+            { id: 'pot',   label: 'Show potential well',    min: 0,   max: 0.5, step: 0.05, val: 0.15 },
+        ],
+        fn(x, z, t, p) {
+            const sigma = 1.0;
+            const zEnv = Math.exp(-z * z / 6);
+
+            let psi;
+            if (p.x0 > 0.05) {
+                // Coherent state: Gaussian oscillating in the potential well
+                const cx = p.x0 * Math.cos(p.omega * t);
+                const mom = -p.x0 * p.omega * Math.sin(p.omega * t);
+                const dx = x - cx;
+                const env = Math.exp(-dx * dx / (2 * sigma * sigma));
+                psi = env * Math.cos(mom * x - 0.5 * p.omega * t);
+            } else {
+                // Energy eigenstate ψ_n with Hermite polynomial
+                const xi = x / sigma;
+                const H = hermite(Math.round(p.n), xi);
+                const env = Math.exp(-xi * xi / 2);
+                const norm = hermiteNorm(Math.round(p.n));
+                psi = (H * env / (norm || 1)) * Math.cos((p.n + 0.5) * p.omega * t);
+            }
+
+            // Subtle parabolic potential as background elevation
+            const half = SIZE / 2;
+            const pot = p.pot * (x * x) / (half * half);
+
+            return psi * zEnv + pot;
         },
         mode: 'surface',
     },
