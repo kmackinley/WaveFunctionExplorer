@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wave Function Explorer - 3D Quantum Visualization</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: #0a0e1a; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; color: #c8d0e0; }
+
+        /* -------- SIDEBAR -------- */
+        #sidebar {
+            width: 340px; min-width: 340px; height: 100vh;
+            background: linear-gradient(180deg, #0f1628 0%, #111a30 100%);
+            border-right: 1px solid #1e2a4a;
+            overflow-y: auto; padding: 20px 18px;
+            display: flex; flex-direction: column; gap: 16px;
+            z-index: 10; scrollbar-width: thin; scrollbar-color: #2a3a5a #111a30;
+        }
+        #sidebar h1 {
+            font-size: 22px; font-weight: 700; letter-spacing: 0.5px;
+            background: linear-gradient(135deg, #4fc3f7, #9c7cff);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        #sidebar .subtitle { font-size: 11px; color: #6a7a9a; margin-top: 2px; letter-spacing: 1px; text-transform: uppercase; }
+
+        .section {
+            background: rgba(255,255,255,0.03); border: 1px solid #1e2a4a;
+            border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+        }
+        .section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #5a6a8a; font-weight: 600; }
+
+        select {
+            width: 100%; padding: 8px 10px; background: #1a2240; color: #c8d0e0;
+            border: 1px solid #2a3a5a; border-radius: 6px; font-size: 14px; cursor: pointer;
+            outline: none; appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a6a8a'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: right 10px center;
+        }
+        select:hover { border-color: #4fc3f7; }
+
+        .param-row { display: flex; flex-direction: column; gap: 4px; }
+        .param-header { display: flex; justify-content: space-between; align-items: center; }
+        .param-name { font-size: 13px; color: #8a9aba; }
+        .param-value { font-size: 13px; color: #4fc3f7; font-weight: 600; font-family: 'Consolas', monospace; }
+
+        input[type="range"] {
+            width: 100%; height: 6px; -webkit-appearance: none; appearance: none;
+            background: #1a2240; border-radius: 3px; outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 16px; height: 16px;
+            background: #4fc3f7; border-radius: 50%; cursor: pointer;
+            box-shadow: 0 0 8px rgba(79,195,247,0.4);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 16px; height: 16px; background: #4fc3f7;
+            border-radius: 50%; cursor: pointer; border: none;
+        }
+
+        #equation-box {
+            text-align: center; padding: 16px 10px;
+            background: rgba(0,0,0,0.3); border-color: #1a2a4a;
+        }
+        #equation-box .katex { font-size: 1.15em; }
+
+        #description { font-size: 13px; line-height: 1.65; color: #8a9aba; }
+
+        .controls-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn {
+            flex: 1; padding: 8px 12px; border: 1px solid #2a3a5a; border-radius: 6px;
+            background: #1a2240; color: #c8d0e0; font-size: 13px; cursor: pointer;
+            transition: all 0.15s; text-align: center; min-width: 80px;
+        }
+        .btn:hover { border-color: #4fc3f7; background: #1e2a4a; }
+        .btn.active { background: #1a3a5a; border-color: #4fc3f7; color: #4fc3f7; }
+
+        .toggle-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8a9aba; }
+        .toggle-row input[type="checkbox"] { accent-color: #4fc3f7; }
+
+        /* -------- CANVAS -------- */
+        #canvas-wrap { flex: 1; position: relative; }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        #info-badge {
+            position: absolute; bottom: 16px; left: 16px;
+            background: rgba(15,22,40,0.85); border: 1px solid #1e2a4a;
+            border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #5a6a8a;
+            backdrop-filter: blur(8px);
+        }
+
+        /* -------- RESPONSIVE -------- */
+        @media (max-width: 800px) {
+            body { flex-direction: column; }
+            #sidebar { width: 100%; min-width: 0; height: auto; max-height: 45vh; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div>
+        <h1>Wave Function Explorer</h1>
+        <div class="subtitle">Interactive 3D Quantum Visualization</div>
+    </div>
+
+    <div class="section">
+        <div class="section-label">Wave Type</div>
+        <select id="wave-select">
+            <option value="plane">Traveling Plane Wave</option>
+            <option value="standing">Standing Wave (Membrane)</option>
+            <option value="packet">Wave Packet</option>
+            <option value="drum">Circular Drum Mode</option>
+            <option value="interference">Two-Source Interference</option>
+            <option value="doubleslit">Double-Slit Experiment</option>
+            <option value="doppler">Doppler Effect</option>
+            <option value="beats">Superposition / Beats</option>
+            <option value="tunneling">Quantum Tunneling</option>
+            <option value="soliton">Soliton (KdV)</option>
+            <option value="chladni">Chladni Plate</option>
+            <option value="harmonics">Spherical Harmonics</option>
+            <option value="hydrogen">Hydrogen Atom Orbital</option>
+        </select>
+    </div>
+
+    <div class="section" id="params-section">
+        <div class="section-label">Parameters</div>
+        <div id="params"></div>
+    </div>
+
+    <div class="section" id="equation-box">
+        <div class="section-label">Equation</div>
+        <div id="equation"></div>
+    </div>
+
+    <div class="section">
+        <div class="section-label">About</div>
+        <div id="description"></div>
+    </div>
+
+    <div class="section">
+        <div class="section-label">Controls</div>
+        <div class="controls-row">
+            <button class="btn active" id="play-btn" onclick="togglePlay()">Pause</button>
+            <button class="btn" onclick="resetCamera()">Reset View</button>
+        </div>
+        <div class="param-row" style="margin-top:6px">
+            <div class="param-header"><span class="param-name">Animation Speed</span><span class="param-value" id="speed-val">1.0x</span></div>
+            <input type="range" id="speed-slider" min="0.1" max="3" step="0.1" value="1" oninput="animSpeed=parseFloat(this.value);document.getElementById('speed-val').textContent=animSpeed.toFixed(1)+'x'">
+        </div>
+        <div class="toggle-row">
+            <input type="checkbox" id="wireframe-cb" onchange="toggleWireframe(this.checked)">
+            <label for="wireframe-cb">Show wireframe overlay</label>
+        </div>
+        <div class="toggle-row">
+            <input type="checkbox" id="axes-cb" checked onchange="axesHelper.visible=this.checked;gridHelper.visible=this.checked">
+            <label for="axes-cb">Show axes &amp; grid</label>
+        </div>
+    </div>
+</div>
+
+<div id="canvas-wrap">
+    <div id="info-badge">Click &amp; drag to rotate &bull; Scroll to zoom &bull; Right-click to pan</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+<script>
+// ================================================================
+//  GLOBALS
+// ================================================================
+const GRID = 180;           // surface subdivision
+const SIZE = 10;            // world units extent of surface
+let playing = true;
+let animSpeed = 1.0;
+let time = 0;
+let currentType = 'plane';
+let surfaceMesh, wireframeMesh, pointCloud;
+let params = {};            // current parameter values
+
+// ================================================================
+//  THREE.JS SCENE
+// ================================================================
+const wrap = document.getElementById('canvas-wrap');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x080c18);
+
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
+camera.position.set(8, 8, 12);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+wrap.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 0, 0);
+
+// Lights
+scene.add(new THREE.AmbientLight(0x4466aa, 0.4));
+scene.add(new THREE.HemisphereLight(0x6688cc, 0x222244, 0.5));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+dirLight.position.set(10, 15, 8);
+scene.add(dirLight);
+
+// Helpers
+const gridHelper = new THREE.GridHelper(SIZE, 20, 0x1a2a4a, 0x111a30);
+scene.add(gridHelper);
+const axesHelper = new THREE.AxesHelper(SIZE * 0.6);
+scene.add(axesHelper);
+
+// ================================================================
+//  SURFACE MESH
+// ================================================================
+function createSurface() {
+    const geo = new THREE.PlaneGeometry(SIZE, SIZE, GRID, GRID);
+    geo.rotateX(-Math.PI / 2);
+    const count = (GRID + 1) * (GRID + 1);
+    const colors = new Float32Array(count * 3);
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const mat = new THREE.MeshPhongMaterial({
+        vertexColors: true, side: THREE.DoubleSide, shininess: 40, specular: 0x222233,
+    });
+    surfaceMesh = new THREE.Mesh(geo, mat);
+    scene.add(surfaceMesh);
+
+    // Wireframe overlay
+    const wMat = new THREE.MeshBasicMaterial({ color: 0x4fc3f7, wireframe: true, transparent: true, opacity: 0.08 });
+    wireframeMesh = new THREE.Mesh(geo, wMat);
+    wireframeMesh.visible = false;
+    scene.add(wireframeMesh);
+}
+createSurface();
+
+// ================================================================
+//  POINT CLOUD (for hydrogen orbital)
+// ================================================================
+function createCloud(posArr, colArr) {
+    if (pointCloud) { scene.remove(pointCloud); pointCloud.geometry.dispose(); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+    const mat = new THREE.PointsMaterial({ size: 0.08, vertexColors: true, sizeAttenuation: true, transparent: true, opacity: 0.85 });
+    pointCloud = new THREE.Points(geo, mat);
+    scene.add(pointCloud);
+}
+
+// ================================================================
+//  SPHERICAL HARMONICS MESH
+// ================================================================
+let sphereMesh;
+function buildSphereMesh(l, m) {
+    if (sphereMesh) { scene.remove(sphereMesh); sphereMesh.geometry.dispose(); }
+    const seg = 120;
+    const geo = new THREE.SphereGeometry(1, seg, seg);
+    const pos = geo.attributes.position;
+    const count = pos.count;
+    const colors = new Float32Array(count * 3);
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const am = Math.abs(m);
+    // Find max |Y| for normalization
+    let maxY = 0.001;
+    for (let i = 0; i < count; i++) {
+        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        const r = Math.sqrt(x*x + y*y + z*z) || 1;
+        const cosT = z / r;
+        const phi = Math.atan2(y, x);
+        const P = assocLegendre(l, am, cosT);
+        const ang = am === 0 ? P : (m > 0 ? P * Math.cos(am * phi) : P * Math.sin(am * phi));
+        const av = Math.abs(ang);
+        if (av > maxY) maxY = av;
+    }
+
+    for (let i = 0; i < count; i++) {
+        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        const r = Math.sqrt(x*x + y*y + z*z) || 1;
+        const cosT = z / r;
+        const phi = Math.atan2(y, x);
+        const P = assocLegendre(l, am, cosT);
+        const ang = am === 0 ? P : (m > 0 ? P * Math.cos(am * phi) : P * Math.sin(am * phi));
+        const norm = ang / maxY;                   // [-1, 1]
+        const displacement = 3.0 * Math.abs(norm); // radius = |Y|
+        const base = 0.2;                          // small core so lobes are clear
+        const scale = base + displacement;
+        pos.setXYZ(i, x * scale, y * scale, z * scale);
+        // Color by sign
+        const t = norm;
+        if (t >= 0) { colors[i*3] = 0.3 + 0.7*t; colors[i*3+1] = 0.55 - 0.2*t; colors[i*3+2] = 1.0 - 0.7*t; }
+        else { const s = -t; colors[i*3] = 1.0; colors[i*3+1] = 0.4 - 0.2*s; colors[i*3+2] = 0.25 + 0.15*s; }
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.DoubleSide, shininess: 50 });
+    sphereMesh = new THREE.Mesh(geo, mat);
+    scene.add(sphereMesh);
+}
+
+// ================================================================
+//  COLOR MAP  (diverging blue-white-red)
+// ================================================================
+function colorMap(val, maxAbs) {
+    const t = Math.max(-1, Math.min(1, val / (maxAbs || 1)));
+    let r, g, b;
+    if (t >= 0) {
+        r = 1; g = 1 - t * 0.75; b = 1 - t * 0.9;
+    } else {
+        const s = -t;
+        r = 1 - s * 0.9; g = 1 - s * 0.6; b = 1;
+    }
+    return [r, g, b];
+}
+
+// ================================================================
+//  WAVE FUNCTION DEFINITIONS
+// ================================================================
+const waveDefs = {
+    plane: {
+        label: 'Traveling Plane Wave',
+        equation: '\\psi(\\mathbf{r},t) = A\\sin(\\mathbf{k}\\cdot\\mathbf{r} - \\omega t)',
+        desc: 'A sinusoidal wave propagating through space. The wave vector <b>k</b> determines direction and wavelength, while &omega; sets the temporal frequency. This is the fundamental solution to the classical wave equation &nabla;&sup2;&psi; = (1/v&sup2;)&part;&sup2;&psi;/&part;t&sup2;.',
+        params: [
+            { id: 'A',     label: 'Amplitude (A)',        min: 0.2, max: 2,   step: 0.1, val: 1.0 },
+            { id: 'k',     label: 'Wave number (k)',      min: 0.5, max: 6,   step: 0.25, val: 2.0 },
+            { id: 'omega', label: 'Frequency (\u03C9)',   min: 0.5, max: 6,   step: 0.25, val: 2.0 },
+            { id: 'theta', label: 'Direction angle (\u03B8)', min: 0, max: 6.28, step: 0.1, val: 0.0 },
+        ],
+        fn(x, z, t, p) {
+            const kx = p.k * Math.cos(p.theta);
+            const kz = p.k * Math.sin(p.theta);
+            return p.A * Math.sin(kx * x + kz * z - p.omega * t);
+        },
+        mode: 'surface',
+    },
+
+    standing: {
+        label: 'Standing Wave (Membrane)',
+        equation: '\\psi(x,y,t) = A\\sin\\!\\left(\\frac{n\\pi x}{L}\\right)\\sin\\!\\left(\\frac{m\\pi y}{L}\\right)\\cos(\\omega t)',
+        desc: 'Normal modes of a vibrating rectangular membrane fixed at the edges. Integers <b>n</b> and <b>m</b> select the mode shape, each producing a unique standing wave pattern with nodal lines where the displacement is always zero.',
+        params: [
+            { id: 'A',     label: 'Amplitude (A)',   min: 0.2, max: 2, step: 0.1, val: 1.2 },
+            { id: 'n',     label: 'Mode n',          min: 1, max: 7, step: 1, val: 2 },
+            { id: 'm',     label: 'Mode m',          min: 1, max: 7, step: 1, val: 3 },
+            { id: 'omega', label: 'Frequency (\u03C9)', min: 0.5, max: 6, step: 0.25, val: 2.0 },
+        ],
+        fn(x, z, t, p) {
+            const half = SIZE / 2;
+            const nx = (x + half) / SIZE;
+            const nz = (z + half) / SIZE;
+            return p.A * Math.sin(p.n * Math.PI * nx) * Math.sin(p.m * Math.PI * nz) * Math.cos(p.omega * t);
+        },
+        mode: 'surface',
+    },
+
+    packet: {
+        label: 'Wave Packet',
+        equation: '\\psi(x,t) = A\\,e^{-(x - v_g t)^2 / 2\\sigma^2}\\sin(kx - \\omega t)',
+        desc: 'A Gaussian-modulated wave packet: a localized "pulse" of wave energy. The envelope travels at the group velocity v<sub>g</sub> while the carrier oscillates at phase velocity &omega;/k. Demonstrates the relationship between localization and spectral bandwidth via the uncertainty principle.',
+        params: [
+            { id: 'A',     label: 'Amplitude (A)',     min: 0.3, max: 2, step: 0.1, val: 1.2 },
+            { id: 'sigma', label: 'Width (\u03C3)',    min: 0.3, max: 3, step: 0.1, val: 1.0 },
+            { id: 'k',     label: 'Wave number (k)',   min: 1, max: 10, step: 0.5, val: 4.0 },
+            { id: 'omega', label: 'Frequency (\u03C9)', min: 0.5, max: 6, step: 0.25, val: 2.5 },
+        ],
+        fn(x, z, t, p) {
+            const vg = p.omega / p.k;
+            const cx = x - vg * t;
+            // wrap so packet stays in view
+            const wrapped = ((cx % SIZE) + SIZE * 1.5) % SIZE - SIZE / 2;
+            const env = Math.exp(-wrapped * wrapped / (2 * p.sigma * p.sigma));
+            const carrier = Math.sin(p.k * x - p.omega * t);
+            const zEnv = Math.exp(-z * z / (2 * (p.sigma * 2) * (p.sigma * 2)));
+            return p.A * env * carrier * zEnv;
+        },
+        mode: 'surface',
+    },
+
+    drum: {
+        label: 'Circular Drum Mode',
+        equation: '\\psi(r,\\theta,t) = J_n\\!\\left(\\frac{\\alpha_{nm}\\,r}{R}\\right)\\cos(n\\theta)\\,\\cos(\\omega t)',
+        desc: 'Vibration modes of a circular drumhead. <b>J<sub>n</sub></b> is the Bessel function of the first kind, and &alpha;<sub>nm</sub> is its m-th zero. The integers <b>n</b> (angular) and <b>m</b> (radial) select the mode pattern. These functions arise wherever circular symmetry meets wave physics.',
+        params: [
+            { id: 'A',     label: 'Amplitude (A)',     min: 0.3, max: 2, step: 0.1, val: 1.2 },
+            { id: 'n',     label: 'Angular mode (n)',   min: 0, max: 5, step: 1, val: 2 },
+            { id: 'm',     label: 'Radial mode (m)',    min: 1, max: 5, step: 1, val: 1 },
+            { id: 'omega', label: 'Frequency (\u03C9)', min: 0.5, max: 6, step: 0.25, val: 2.0 },
+        ],
+        fn(x, z, t, p) {
+            const r = Math.sqrt(x * x + z * z);
+            const R = SIZE / 2;
+            if (r > R) return 0;
+            const theta = Math.atan2(z, x);
+            const alpha = besselZero(p.n, p.m);
+            return p.A * besselJ(p.n, alpha * r / R) * Math.cos(p.n * theta) * Math.cos(p.omega * t);
+        },
+        mode: 'surface',
+    },
+
+    interference: {
+        label: 'Two-Source Interference',
+        equation: '\\psi = A\\sin(k r_1 - \\omega t) + A\\sin(k r_2 - \\omega t)',
+        desc: 'The superposition of waves from two coherent point sources creates an interference pattern. Bright bands appear where waves arrive in phase (constructive), dark bands where out of phase (destructive). This underpins the double-slit experiment &mdash; a cornerstone of quantum mechanics.',
+        params: [
+            { id: 'A',     label: 'Amplitude (A)',         min: 0.2, max: 1.5, step: 0.1, val: 0.8 },
+            { id: 'd',     label: 'Source separation (d)',  min: 0.5, max: 5, step: 0.25, val: 2.5 },
+            { id: 'k',     label: 'Wave number (k)',        min: 1, max: 10, step: 0.5, val: 4.0 },
+            { id: 'omega', label: 'Frequency (\u03C9)',     min: 0.5, max: 6, step: 0.25, val: 2.0 },
+        ],
+        fn(x, z, t, p) {
+            const r1 = Math.sqrt((x - p.d / 2) ** 2 + z ** 2) + 0.01;
+            const r2 = Math.sqrt((x + p.d / 2) ** 2 + z ** 2) + 0.01;
+            return p.A * (Math.sin(p.k * r1 - p.omega * t) / Math.sqrt(r1)
+                        + Math.sin(p.k * r2 - p.omega * t) / Math.sqrt(r2));
+        },
+        mode: 'surface',
+    },
+
+    doubleslit: {
+        label: 'Double-Slit Experiment',
+        equation: 'I(\\theta) \\propto \\cos^2\\!\\left(\\frac{\\pi d\\sin\\theta}{\\lambda}\\right)\\,\\mathrm{sinc}^2\\!\\left(\\frac{\\pi a\\sin\\theta}{\\lambda}\\right)',
+        desc: 'The iconic double-slit experiment. A plane wave strikes a barrier with two narrow slits and wavelets from each opening (<b>Huygens\' principle</b>) interfere to produce bright and dark fringes. The pattern encodes both <b>interference</b> (from slit spacing <i>d</i>) modulated by single-slit <b>diffraction</b> (from slit width <i>a</i>). This experiment revealed wave&ndash;particle duality and remains a cornerstone of quantum mechanics.',
+        params: [
+            { id: 'A',     label: 'Amplitude (A)',         min: 0.2, max: 1.5, step: 0.1,  val: 0.8 },
+            { id: 'd',     label: 'Slit separation (d)',    min: 0.5, max: 4.0, step: 0.25, val: 2.0 },
+            { id: 'a',     label: 'Slit width (a)',         min: 0.1, max: 1.5, step: 0.05, val: 0.35 },
+            { id: 'k',     label: 'Wave number (k)',        min: 2,   max: 12,  step: 0.5,  val: 5.0 },
+            { id: 'omega', label: 'Frequency (\u03C9)',     min: 0.5, max: 6,   step: 0.25, val: 3.0 },
+        ],
+        fn(x, z, t, p) {
+            const bx = -2.0;  // barrier x-position
+            const bw = 0.12;  // barrier visual half-width
+
+            // Left of barrier: incoming plane wave
+            if (x < bx - bw) {
+                return p.A * Math.sin(p.k * x - p.omega * t);
+            }
+
+            // Barrier zone: wall blocks wave, slits let it through
+            if (x < bx + bw) {
+                const inSlit = Math.abs(z - p.d / 2) < p.a / 2
+                            || Math.abs(z + p.d / 2) < p.a / 2;
+                return inSlit ? p.A * Math.sin(p.k * bx - p.omega * t) : 0;
+            }
+
+            // Right of barrier: Huygens-Fresnel diffraction from slit sources
+            const nSrc = 12;
+            let sum = 0;
+            for (let slit = -1; slit <= 1; slit += 2) {
+                const sc = slit * p.d / 2;
+                for (let i = 0; i < nSrc; i++) {
+                    const sz = sc + ((i / (nSrc - 1)) - 0.5) * p.a;
+                    const r = Math.sqrt((x - bx) ** 2 + (z - sz) ** 2);
+                    sum += Math.sin(p.k * (r + bx) - p.omega * t) / (Math.sqrt(r) + 0.15);
+                }
+            }
+            return p.A * sum / (nSrc * 1.2);
+        },
+        mode: 'surface',
+    },
+
+    doppler: {
+        label: 'Doppler Effect',
+        equation: '\\psi(\\mathbf{r},t) = \\frac{A}{\\sqrt{|\\mathbf{r}-\\mathbf{r}_s(t)\\,|}}\\,\\sin\\!\\left(k\\,|\\mathbf{r}-\\mathbf{r}_s(t)| - \\omega t\\right)',
+        desc: 'A point source moving through the medium emits waves whose wavefronts <b>compress ahead</b> (higher observed frequency) and <b>stretch behind</b> (lower observed frequency). This is the <b>Doppler effect</b>. When the source speed approaches the wave speed, the wavefronts pile up into a shock cone &mdash; the basis of sonic booms.',
+        params: [
+            { id: 'A',     label: 'Amplitude (A)',        min: 0.2, max: 1.5, step: 0.1,  val: 0.9 },
+            { id: 'v',     label: 'Source speed (v)',      min: 0.0, max: 2.5, step: 0.1,  val: 1.2 },
+            { id: 'k',     label: 'Wave number (k)',       min: 1,   max: 8,   step: 0.5,  val: 3.0 },
+            { id: 'omega', label: 'Frequency (\u03C9)',    min: 1,   max: 8,   step: 0.25, val: 4.0 },
+        ],
+        fn(x, z, t, p) {
+            // Source orbits in a circle so it stays in view
+            const sx = p.v * 1.8 * Math.cos(t * 0.4);
+            const sz = p.v * 1.8 * Math.sin(t * 0.4);
+            // Sum several past emissions for a trailing wave pattern
+            let sum = 0;
+            const steps = 60;
+            const dt = 0.15;
+            for (let i = 0; i < steps; i++) {
+                const pastT = t - i * dt;
+                const px = p.v * 1.8 * Math.cos(pastT * 0.4);
+                const pz = p.v * 1.8 * Math.sin(pastT * 0.4);
+                const r = Math.sqrt((x - px) ** 2 + (z - pz) ** 2) + 0.05;
+                const age = i * dt;
+                const decay = Math.exp(-age * 0.35);
+                sum += decay * Math.sin(p.k * r - p.omega * age) / (Math.sqrt(r) + 0.3);
+            }
+            return p.A * sum / (steps * 0.25);
+        },
+        mode: 'surface',
+    },
+
+    beats: {
+        label: 'Superposition / Beats',
+        equation: '\\psi = A\\sin(k_1 x - \\omega_1 t) + A\\sin(k_2 x - \\omega_2 t)',
+        desc: 'Two waves with slightly different frequencies <b>superpose</b> to create a <b>beat pattern</b>: the amplitude rises and falls at the beat frequency |&omega;<sub>1</sub>&minus;&omega;<sub>2</sub>|. This demonstrates the principle of superposition and is how musicians tune instruments by listening for beats between two notes.',
+        params: [
+            { id: 'A',  label: 'Amplitude (A)',          min: 0.2, max: 1.5, step: 0.1,  val: 0.8 },
+            { id: 'k1', label: 'Wave number k\u2081',    min: 1,   max: 8,   step: 0.25, val: 3.0 },
+            { id: 'w1', label: 'Frequency \u03C9\u2081', min: 1,   max: 8,   step: 0.25, val: 3.0 },
+            { id: 'w2', label: 'Frequency \u03C9\u2082', min: 1,   max: 8,   step: 0.25, val: 3.5 },
+        ],
+        fn(x, z, t, p) {
+            const k2 = p.k1 * (p.w2 / p.w1); // keep phase velocity similar
+            const zEnv = Math.exp(-z * z / 8);
+            const wave1 = Math.sin(p.k1 * x - p.w1 * t);
+            const wave2 = Math.sin(k2 * x - p.w2 * t);
+            return p.A * (wave1 + wave2) * zEnv;
+        },
+        mode: 'surface',
+    },
+
+    tunneling: {
+        label: 'Quantum Tunneling',
+        equation: '\\psi(x,t) = e^{-(x-v t)^2/2\\sigma^2}\\,e^{ikx}\\;+\\;\\text{reflected / transmitted}',
+        desc: 'A quantum wave packet encounters a potential <b>barrier</b> (the raised wall). Classically the particle would bounce back, but quantum mechanics allows part of the wave to <b>tunnel through</b>. The transmitted amplitude depends exponentially on barrier width and height &mdash; the basis of tunnel diodes and scanning tunneling microscopes.',
+        params: [
+            { id: 'A',     label: 'Amplitude (A)',       min: 0.3, max: 2,   step: 0.1,  val: 1.2 },
+            { id: 'sigma', label: 'Packet width (\u03C3)', min: 0.3, max: 2, step: 0.1,  val: 0.8 },
+            { id: 'k',     label: 'Wave number (k)',      min: 2,   max: 10,  step: 0.5,  val: 5.0 },
+            { id: 'bh',    label: 'Barrier height',       min: 0.3, max: 2.0, step: 0.1,  val: 1.0 },
+            { id: 'bw',    label: 'Barrier width',        min: 0.2, max: 2.0, step: 0.1,  val: 0.6 },
+        ],
+        fn(x, z, t, p) {
+            const speed = 2.0;
+            const cx = -3 + speed * (t % 8);  // packet center, repeating
+            const zEnv = Math.exp(-z * z / 6);
+
+            // Barrier region (centered at x=1)
+            const bCenter = 1.0;
+            const inBarrier = Math.abs(x - bCenter) < p.bw / 2;
+
+            // Incoming packet
+            const dx = x - cx;
+            const env = Math.exp(-dx * dx / (2 * p.sigma * p.sigma));
+            const incoming = p.A * env * Math.sin(p.k * x - p.k * speed * (t % 8));
+
+            // Transmission coefficient (exponential decay through barrier)
+            const kappa = Math.sqrt(Math.max(0.1, p.bh * p.k * 2));
+            const T = Math.exp(-kappa * p.bw);
+
+            // Reflected packet (appears after packet hits barrier)
+            const hitTime = (bCenter - p.bw / 2 + 3) / speed;
+            const timeSinceHit = (t % 8) - hitTime;
+
+            let reflected = 0;
+            if (timeSinceHit > 0) {
+                const rcx = bCenter - p.bw / 2 - speed * timeSinceHit;
+                const rdx = x - rcx;
+                const renv = Math.exp(-rdx * rdx / (2 * p.sigma * p.sigma));
+                reflected = p.A * (1 - T) * renv * Math.sin(-p.k * x - p.k * speed * timeSinceHit) * 0.7;
+            }
+
+            // Transmitted packet (smaller, appears on other side)
+            let transmitted = 0;
+            if (timeSinceHit > 0) {
+                const tcx = bCenter + p.bw / 2 + speed * timeSinceHit;
+                const tdx = x - tcx;
+                const tenv = Math.exp(-tdx * tdx / (2 * p.sigma * p.sigma));
+                transmitted = p.A * T * tenv * Math.sin(p.k * x - p.k * speed * (t % 8));
+            }
+
+            // Barrier visualization (raised surface)
+            const barrier = inBarrier ? p.bh * 0.3 : 0;
+
+            return ((incoming + reflected + transmitted) * zEnv) + barrier;
+        },
+        mode: 'surface',
+    },
+
+    soliton: {
+        label: 'Soliton (KdV)',
+        equation: '\\psi(x,t) = A\\,\\mathrm{sech}^2\\!\\left(\\frac{x - vt}{w}\\right),\\quad v \\propto A',
+        desc: 'A <b>soliton</b> is a self-reinforcing solitary wave that maintains its shape due to a balance between dispersion and nonlinearity. Governed by the <b>Korteweg&ndash;de Vries (KdV)</b> equation, taller solitons travel faster. When two solitons collide they pass through each other and emerge unchanged &mdash; a hallmark of integrability.',
+        params: [
+            { id: 'A1', label: 'Soliton 1 amplitude',  min: 0.3, max: 2.5, step: 0.1, val: 1.5 },
+            { id: 'A2', label: 'Soliton 2 amplitude',  min: 0.0, max: 2.0, step: 0.1, val: 0.8 },
+            { id: 'w',  label: 'Width',                min: 0.3, max: 2.0, step: 0.1, val: 0.8 },
+        ],
+        fn(x, z, t, p) {
+            const zEnv = Math.exp(-z * z / 10);
+            // Soliton 1 (taller = faster, KdV property)
+            const v1 = p.A1 * 1.2;
+            const x1 = x - v1 * t + 3;
+            const wrapped1 = ((x1 % SIZE) + SIZE * 1.5) % SIZE - SIZE / 2;
+            const s1 = p.A1 / Math.pow(Math.cosh(wrapped1 / p.w), 2);
+            // Soliton 2
+            let s2 = 0;
+            if (p.A2 > 0.05) {
+                const v2 = p.A2 * 1.2;
+                const x2 = x - v2 * t - 2;
+                const wrapped2 = ((x2 % SIZE) + SIZE * 1.5) % SIZE - SIZE / 2;
+                s2 = p.A2 / Math.pow(Math.cosh(wrapped2 / (p.w * 1.2)), 2);
+            }
+            return (s1 + s2) * zEnv;
+        },
+        mode: 'surface',
+    },
+
+    chladni: {
+        label: 'Chladni Plate',
+        equation: '\\psi(x,y,t) = \\bigl[\\cos(n\\pi x/L)\\cos(m\\pi y/L) \\pm \\cos(m\\pi x/L)\\cos(n\\pi y/L)\\bigr]\\cos(\\omega t)',
+        desc: '<b>Chladni patterns</b> are the vibration modes of a flat plate with <b>free edges</b>. Unlike a fixed membrane, the plate can move at the boundary. Sand on a vibrating plate collects along <b>nodal lines</b> (zero displacement), creating intricate geometric patterns first demonstrated by Ernst Chladni in 1787.',
+        params: [
+            { id: 'A',     label: 'Amplitude (A)',      min: 0.3, max: 2,  step: 0.1,  val: 1.0 },
+            { id: 'n',     label: 'Mode n',             min: 1,   max: 8,  step: 1,    val: 3 },
+            { id: 'm',     label: 'Mode m',             min: 1,   max: 8,  step: 1,    val: 5 },
+            { id: 'mix',   label: 'Symmetry mix (\u00B1)', min: -1, max: 1, step: 0.1, val: 1.0 },
+            { id: 'omega', label: 'Frequency (\u03C9)', min: 0.5, max: 6,  step: 0.25, val: 2.0 },
+        ],
+        fn(x, z, t, p) {
+            const half = SIZE / 2;
+            const nx = x / half;   // normalized to [-1, 1]
+            const nz = z / half;
+            const c1 = Math.cos(p.n * Math.PI * nx * 0.5) * Math.cos(p.m * Math.PI * nz * 0.5);
+            const c2 = Math.cos(p.m * Math.PI * nx * 0.5) * Math.cos(p.n * Math.PI * nz * 0.5);
+            return p.A * (c1 + p.mix * c2) * Math.cos(p.omega * t);
+        },
+        mode: 'surface',
+    },
+
+    harmonics: {
+        label: 'Spherical Harmonics',
+        equation: 'Y_l^{\\,m}(\\theta,\\phi) = P_l^{\\,m}(\\cos\\theta)\\;e^{\\,im\\phi}',
+        desc: '<b>Spherical harmonics</b> are the angular solutions to Laplace\'s equation in spherical coordinates. They form the angular part of hydrogen orbitals and describe vibration modes of a sphere. The surface shows |Y<sub>l</sub><sup>m</sup>|, with color indicating sign (+blue / &minus;red). These functions appear in acoustics, quantum mechanics, and computer graphics.',
+        params: [
+            { id: 'l', label: 'Degree (l)',    min: 0, max: 6, step: 1, val: 3 },
+            { id: 'm', label: 'Order (m)',      min: 0, max: 3, step: 1, val: 2 },
+        ],
+        mode: 'harmonics',
+    },
+
+    hydrogen: {
+        label: 'Hydrogen Atom Orbital',
+        equation: '\\psi_{nlm}(r,\\theta,\\phi) = R_{nl}(r)\\;Y_l^{\\,m}(\\theta,\\phi)',
+        desc: 'Electron wave functions of the hydrogen atom. The quantum numbers <b>n</b> (principal), <b>l</b> (angular momentum), and <b>m</b> (magnetic) fully specify each orbital. The point cloud density shows |&psi;|&sup2; &mdash; the probability of finding the electron. Blue = positive &psi;, red = negative.',
+        params: [
+            { id: 'n', label: 'Principal (n)',           min: 1, max: 4, step: 1, val: 2 },
+            { id: 'l', label: 'Angular momentum (l)',    min: 0, max: 1, step: 1, val: 1 },
+            { id: 'm', label: 'Magnetic (m)',            min: -1, max: 1, step: 1, val: 0 },
+        ],
+        mode: 'cloud',
+    },
+};
+
+// ================================================================
+//  BESSEL FUNCTIONS
+// ================================================================
+function besselJ(n, x) {
+    if (x === 0) return n === 0 ? 1 : 0;
+    let sum = 0;
+    for (let k = 0; k < 25; k++) {
+        const sign = (k % 2 === 0) ? 1 : -1;
+        const num = Math.pow(x / 2, 2 * k + n);
+        let denom = 1;
+        for (let j = 1; j <= k; j++) denom *= j;
+        for (let j = 1; j <= n + k; j++) denom *= j;
+        sum += sign * num / denom;
+        if (Math.abs(num / denom) < 1e-15) break;
+    }
+    return sum;
+}
+
+// Precomputed zeros of J_n for n=0..5, m=1..5
+const BESSEL_ZEROS = [
+    [2.4048, 5.5201, 8.6537, 11.7915, 14.9309],   // J0
+    [3.8317, 7.0156, 10.1735, 13.3237, 16.4706],   // J1
+    [5.1356, 8.4172, 11.6198, 14.7960, 17.9598],   // J2
+    [6.3802, 9.7610, 13.0152, 16.2235, 19.4094],   // J3
+    [7.5883, 11.0647, 14.3725, 17.6160, 20.8269],  // J4
+    [8.7715, 12.3386, 15.7002, 18.9801, 22.2178],  // J5
+];
+function besselZero(n, m) {
+    if (n <= 5 && m >= 1 && m <= 5) return BESSEL_ZEROS[n][m - 1];
+    return 3.8 + n * 1.1 + m * 3.1; // rough fallback
+}
+
+// ================================================================
+//  HYDROGEN ORBITAL MATH
+// ================================================================
+function assocLaguerre(k, alpha, x) {
+    if (k === 0) return 1;
+    let prev2 = 1;
+    let prev1 = 1 + alpha - x;
+    if (k === 1) return prev1;
+    for (let i = 2; i <= k; i++) {
+        const curr = ((2 * i - 1 + alpha - x) * prev1 - (i - 1 + alpha) * prev2) / i;
+        prev2 = prev1;
+        prev1 = curr;
+    }
+    return prev1;
+}
+
+function assocLegendre(l, m, x) {
+    let pmm = 1;
+    if (m > 0) {
+        const s = Math.sqrt(Math.max(0, (1 - x) * (1 + x)));
+        let fact = 1;
+        for (let i = 0; i < m; i++) { pmm *= -fact * s; fact += 2; }
+    }
+    if (l === m) return pmm;
+    let pmm1 = x * (2 * m + 1) * pmm;
+    if (l === m + 1) return pmm1;
+    let pll = 0;
+    for (let ll = m + 2; ll <= l; ll++) {
+        pll = (x * (2 * ll - 1) * pmm1 - (ll + m - 1) * pmm) / (ll - m);
+        pmm = pmm1;
+        pmm1 = pll;
+    }
+    return pll;
+}
+
+function hydrogenPsi(x, y, z, n, l, m) {
+    const r = Math.sqrt(x * x + y * y + z * z);
+    if (r < 1e-8) return l === 0 ? 1 : 0;
+    const cosTheta = z / r;
+    const phi = Math.atan2(y, x);
+    const am = Math.abs(m);
+    const a0 = 1; // Bohr radius = 1 in natural units
+    const rho = 2 * r / (n * a0);
+
+    // Radial part (un-normalized)
+    const L = assocLaguerre(n - l - 1, 2 * l + 1, rho);
+    const R = Math.pow(rho, l) * Math.exp(-rho / 2) * L;
+
+    // Angular part (real spherical harmonic, un-normalized)
+    const P = assocLegendre(l, am, cosTheta);
+    let Y;
+    if (m > 0)      Y = P * Math.cos(m * phi);
+    else if (m < 0) Y = P * Math.sin(am * phi);
+    else             Y = P;
+
+    return R * Y;
+}
+
+function generateOrbitalCloud(n, l, m) {
+    const N = 65000;
+    const maxR = (n * n + 2) * 3.5;
+    const positions = [];
+    const colors = [];
+
+    // Find max |ψ|² for rejection sampling
+    let maxPsi2 = 0;
+    for (let i = 0; i < 3000; i++) {
+        const rx = (Math.random() - 0.5) * 2 * maxR;
+        const ry = (Math.random() - 0.5) * 2 * maxR;
+        const rz = (Math.random() - 0.5) * 2 * maxR;
+        const psi = hydrogenPsi(rx, ry, rz, n, l, m);
+        maxPsi2 = Math.max(maxPsi2, psi * psi);
+    }
+    if (maxPsi2 === 0) maxPsi2 = 1;
+
+    let count = 0, attempts = 0;
+    while (count < N && attempts < N * 80) {
+        attempts++;
+        // Bias sampling toward nucleus
+        const u = Math.random();
+        const rSample = maxR * Math.pow(u, 0.5);
+        const theta = Math.acos(2 * Math.random() - 1);
+        const phi = Math.random() * 2 * Math.PI;
+        const px = rSample * Math.sin(theta) * Math.cos(phi);
+        const py = rSample * Math.sin(theta) * Math.sin(phi);
+        const pz = rSample * Math.cos(theta);
+
+        const psi = hydrogenPsi(px, py, pz, n, l, m);
+        const prob = (psi * psi) / maxPsi2;
+        if (Math.random() < prob) {
+            const scale = 4.0 / maxR;
+            positions.push(px * scale, pz * scale, py * scale);
+            if (psi >= 0) { colors.push(0.3, 0.55, 1.0); }
+            else          { colors.push(1.0, 0.3, 0.25); }
+            count++;
+        }
+    }
+    return {
+        pos: new Float32Array(positions),
+        col: new Float32Array(colors),
+    };
+}
+
+// ================================================================
+//  SURFACE UPDATE
+// ================================================================
+function updateSurface(t) {
+    const def = waveDefs[currentType];
+    if (!def || def.mode !== 'surface') return;
+
+    const geo = surfaceMesh.geometry;
+    const pos = geo.attributes.position.array;
+    const col = geo.attributes.color.array;
+    const stride = GRID + 1;
+    let maxAbs = 0.01;
+
+    // First pass: compute values and find max
+    const vals = new Float32Array(stride * stride);
+    for (let i = 0; i < stride; i++) {
+        for (let j = 0; j < stride; j++) {
+            const idx = i * stride + j;
+            const x = pos[idx * 3];
+            const z = pos[idx * 3 + 2];
+            const v = def.fn(x, z, t, params);
+            vals[idx] = v;
+            const av = Math.abs(v);
+            if (av > maxAbs) maxAbs = av;
+        }
+    }
+
+    // Second pass: apply Y positions and colors
+    for (let i = 0; i < stride * stride; i++) {
+        pos[i * 3 + 1] = vals[i];
+        const [r, g, b] = colorMap(vals[i], maxAbs);
+        col[i * 3] = r;
+        col[i * 3 + 1] = g;
+        col[i * 3 + 2] = b;
+    }
+
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+    geo.computeVertexNormals();
+}
+
+// ================================================================
+//  UI MANAGEMENT
+// ================================================================
+function buildParams(type) {
+    const def = waveDefs[type];
+    const container = document.getElementById('params');
+    container.innerHTML = '';
+    params = {};
+
+    def.params.forEach(p => {
+        params[p.id] = p.val;
+        const row = document.createElement('div');
+        row.className = 'param-row';
+        row.innerHTML = `
+            <div class="param-header">
+                <span class="param-name">${p.label}</span>
+                <span class="param-value" id="pv-${p.id}">${fmtVal(p.val, p.step)}</span>
+            </div>
+            <input type="range" id="ps-${p.id}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.val}">
+        `;
+        container.appendChild(row);
+
+        const slider = row.querySelector('input');
+        slider.addEventListener('input', () => {
+            const v = parseFloat(slider.value);
+            params[p.id] = v;
+            document.getElementById(`pv-${p.id}`).textContent = fmtVal(v, p.step);
+            if (type === 'hydrogen') {
+                enforcQuantumNumbers();
+                rebuildCloud();
+            }
+            if (type === 'harmonics') {
+                enforceHarmonicNumbers();
+                buildSphereMesh(params.l, params.m);
+            }
+        });
+    });
+}
+
+function fmtVal(v, step) {
+    return step >= 1 ? v.toFixed(0) : v.toFixed(step < 0.1 ? 2 : 1);
+}
+
+function enforcQuantumNumbers() {
+    // l must be 0..n-1, m must be -l..l
+    const n = params.n;
+    const lSlider = document.getElementById('ps-l');
+    const mSlider = document.getElementById('ps-m');
+    if (!lSlider || !mSlider) return;
+
+    lSlider.max = n - 1;
+    if (params.l >= n) { params.l = n - 1; lSlider.value = params.l; document.getElementById('pv-l').textContent = params.l; }
+
+    mSlider.min = -params.l;
+    mSlider.max = params.l;
+    if (params.m > params.l)  { params.m = params.l;  mSlider.value = params.m; }
+    if (params.m < -params.l) { params.m = -params.l; mSlider.value = params.m; }
+    document.getElementById('pv-m').textContent = params.m;
+}
+
+function enforceHarmonicNumbers() {
+    const mSlider = document.getElementById('ps-m');
+    if (!mSlider) return;
+    mSlider.max = params.l;
+    if (params.m > params.l) { params.m = params.l; mSlider.value = params.m; }
+    document.getElementById('pv-m').textContent = params.m;
+}
+
+function setEquation(type) {
+    const el = document.getElementById('equation');
+    try { katex.render(waveDefs[type].equation, el, { displayMode: true, throwOnError: false }); }
+    catch(e) { el.textContent = waveDefs[type].equation; }
+}
+
+function setDescription(type) {
+    document.getElementById('description').innerHTML = waveDefs[type].desc;
+}
+
+function switchType(type) {
+    currentType = type;
+    time = 0;
+    buildParams(type);
+    setEquation(type);
+    setDescription(type);
+
+    const mode = waveDefs[type].mode;
+    surfaceMesh.visible = mode === 'surface';
+    wireframeMesh.visible = mode === 'surface' && document.getElementById('wireframe-cb').checked;
+    if (pointCloud) pointCloud.visible = mode === 'cloud';
+    if (sphereMesh) sphereMesh.visible = mode === 'harmonics';
+
+    if (mode === 'cloud') {
+        rebuildCloud();
+        camera.position.set(6, 5, 10);
+    } else if (mode === 'harmonics') {
+        buildSphereMesh(params.l, params.m);
+        camera.position.set(5, 4, 8);
+    } else {
+        resetCamera();
+    }
+}
+
+function rebuildCloud() {
+    const { pos, col } = generateOrbitalCloud(params.n, params.l, params.m);
+    createCloud(pos, col);
+    pointCloud.visible = true;
+}
+
+function togglePlay() {
+    playing = !playing;
+    const btn = document.getElementById('play-btn');
+    btn.textContent = playing ? 'Pause' : 'Play';
+    btn.classList.toggle('active', playing);
+}
+
+function toggleWireframe(on) {
+    wireframeMesh.visible = on && waveDefs[currentType].mode === 'surface';
+}
+
+function resetCamera() {
+    camera.position.set(8, 8, 12);
+    controls.target.set(0, 0, 0);
+    controls.update();
+}
+
+// ================================================================
+//  RESIZE
+// ================================================================
+function onResize() {
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+}
+window.addEventListener('resize', onResize);
+
+// ================================================================
+//  SELECT HANDLER
+// ================================================================
+document.getElementById('wave-select').addEventListener('change', e => switchType(e.target.value));
+
+// ================================================================
+//  ANIMATION LOOP
+// ================================================================
+const clock = new THREE.Clock();
+function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    if (playing) time += dt * animSpeed;
+    controls.update();
+
+    const mode = waveDefs[currentType].mode;
+    if (mode === 'surface') {
+        updateSurface(time);
+    } else if (mode === 'cloud' && pointCloud) {
+        pointCloud.rotation.y += dt * 0.15 * animSpeed;
+    } else if (mode === 'harmonics' && sphereMesh) {
+        sphereMesh.rotation.y += dt * 0.25 * animSpeed;
+    }
+
+    renderer.render(scene, camera);
+}
+
+// ================================================================
+//  INIT
+// ================================================================
+switchType('plane');
+onResize();
+animate();
+</script>
+</body>
+</html>
